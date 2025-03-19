@@ -2,7 +2,6 @@ name: Release on Push
 
 permissions:
   contents: write
-  releases: write
 
 on:
   push:
