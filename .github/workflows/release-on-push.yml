@@ -34,7 +34,7 @@ jobs:
           fi
           echo "Commit Message: $COMMIT_MSG"
           
-          LAST_TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
+          LAST_TAG=$(git describe --tags --abbrev=0 origin/main || echo "v0.0.0")
           echo "LAST_TAG=$LAST_TAG"
           
           # Remove leading "v"
