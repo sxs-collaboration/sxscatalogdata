@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
@@ -85,30 +85,29 @@ jobs:
               NEW_TAG="v${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
           fi
           echo "New tag: $NEW_TAG"
+          echo "new_suffix=$NEW_SUFFIX" >> $GITHUB_OUTPUT
           echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
           echo "release_message<<EOF" >> $GITHUB_OUTPUT
           echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Display calculated version (PR only)
-        if: ${{ github.event_name == 'pull_request' }}
+      - name: Display calculated version
         run: |
-          echo "Pull Request detected."
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "Pull Request detected."
+          fi
           echo "Calculated version would be: ${{ steps.version_bump.outputs.new_tag }}"
           echo "Release body would be: ${{ steps.version_bump.outputs.release_message }}"
 
-      - name: Create new tag and push
-        if: ${{ github.event_name != 'pull_request' }}
-        run: |
-          git tag ${{ steps.version_bump.outputs.new_tag }}
-          git push origin ${{ steps.version_bump.outputs.new_tag }}
-
-      - name: Create GitHub release
-        if: ${{ github.event_name != 'pull_request' }}
-        uses: actions/create-release@v1
+      - name: Create release
+        if: "!contains(github.event.head_commit.message, '[no release]')"
+        id: create_release
+        uses: softprops/action-gh-release@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{ steps.version_bump.outputs.new_tag }}
-          release_name: ${{ steps.version_bump.outputs.new_tag }}
+          name: Release ${{ steps.version_bump.outputs.new_tag }}
+          draft: false
+          prerelease: ${{ steps.version_bump.outputs.new_suffix != '' }}
           body: ${{ steps.version_bump.outputs.release_message }}
