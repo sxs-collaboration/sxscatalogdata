@@ -8,8 +8,8 @@ on:
 
 jobs:
   release:
-    # This condition applies for push events; PR events will run the job regardless.
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    # Run if it's a pull_request event OR the commit message on push does not contain [skip ci]
+    if: ${{ github.event_name == 'pull_request' || !contains(github.event.head_commit.message, '[skip ci]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -23,7 +23,15 @@ jobs:
       - name: Determine version bump and set new tag
         id: version_bump
         run: |
-          echo "Commit Message: ${{ github.event.head_commit.message }}"
+          # Determine commit message based on the event type
+          EVENT_NAME="${{ github.event_name }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            COMMIT_MSG=$(git log -1 --pretty=format:%B)
+          else
+            COMMIT_MSG="${{ github.event.head_commit.message }}"
+          fi
+          echo "Commit Message: $COMMIT_MSG"
+          
           LAST_TAG=$(git describe --tags --abbrev=0 || echo "v0.0.0")
           echo "LAST_TAG=$LAST_TAG"
           
@@ -34,7 +42,6 @@ jobs:
           SUFFIX=${REST#$PATCH}
           echo "Current version: major=$MAJOR, minor=$MINOR, patch=$PATCH, suffix=$SUFFIX"
           
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
           if echo "$COMMIT_MSG" | grep -q "#major"; then
               NEW_MAJOR=$((MAJOR + 1))
               NEW_MINOR=0
@@ -75,8 +82,8 @@ jobs:
               NEW_TAG="v${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
           fi
           echo "New tag: $NEW_TAG"
-          echo "::set-output name=new_tag::$NEW_TAG"
-          echo "::set-output name=release_message::$COMMIT_MSG"
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "release_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
 
       - name: Display calculated version (PR only)
         if: ${{ github.event_name == 'pull_request' }}
