@@ -1,0 +1,112 @@
+name: Release on Push
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+
+jobs:
+  release:
+    # Run if it's a pull_request event OR the commit message on push does not contain [skip ci]
+    if: ${{ github.event_name == 'pull_request' || !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Set up Git environment
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Determine version bump and set new tag
+        id: version_bump
+        run: |
+          # Determine commit message based on the event type
+          EVENT_NAME="${{ github.event_name }}"
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            COMMIT_MSG=$(git log -1 --pretty=format:%B)
+          else
+            COMMIT_MSG="${{ github.event.head_commit.message }}"
+          fi
+          echo "Commit Message: $COMMIT_MSG"
+          
+          LAST_TAG=$(git describe --tags --abbrev=0 origin/main || echo "v0.0.0")
+          echo "LAST_TAG=$LAST_TAG"
+          
+          # Remove leading "v"
+          VERSION=${LAST_TAG#v}
+          IFS='.' read -r MAJOR MINOR REST <<< "$VERSION"
+          PATCH=$(echo "$REST" | grep -o '^[0-9]\+')
+          SUFFIX=${REST#$PATCH}
+          echo "Current version: major=$MAJOR, minor=$MINOR, patch=$PATCH, suffix=$SUFFIX"
+          
+          if echo "$COMMIT_MSG" | grep -q "#major"; then
+              NEW_MAJOR=$((MAJOR + 1))
+              NEW_MINOR=0
+              NEW_PATCH=0
+              NEW_SUFFIX=""
+          elif echo "$COMMIT_MSG" | grep -q "#minor"; then
+              NEW_MAJOR=$MAJOR
+              NEW_MINOR=$((MINOR + 1))
+              NEW_PATCH=0
+              NEW_SUFFIX=""
+          elif echo "$COMMIT_MSG" | grep -q "#release"; then
+              # Final release: remove pre-release suffix
+              NEW_MAJOR=$MAJOR
+              NEW_MINOR=$MINOR
+              NEW_PATCH=$PATCH
+              NEW_SUFFIX=""
+          elif [ -n "$SUFFIX" ]; then
+              # Increment pre-release suffix (alpha/beta)
+              letter=$(echo "$SUFFIX" | grep -o '^[ab]')
+              number=$(echo "$SUFFIX" | grep -o '[0-9]\+')
+              if [ -z "$number" ]; then number=0; fi
+              new_number=$((number + 1))
+              NEW_MAJOR=$MAJOR
+              NEW_MINOR=$MINOR
+              NEW_PATCH=$PATCH
+              NEW_SUFFIX="${letter}${new_number}"
+          else
+              # Default patch bump for final release
+              NEW_MAJOR=$MAJOR
+              NEW_MINOR=$MINOR
+              NEW_PATCH=$((PATCH + 1))
+              NEW_SUFFIX=""
+          fi
+          
+          if [ -n "$NEW_SUFFIX" ]; then
+              NEW_TAG="v${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}${NEW_SUFFIX}"
+          else
+              NEW_TAG="v${NEW_MAJOR}.${NEW_MINOR}.${NEW_PATCH}"
+          fi
+          echo "New tag: $NEW_TAG"
+          echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
+          echo "release_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
+
+      - name: Display calculated version (PR only)
+        if: ${{ github.event_name == 'pull_request' }}
+        run: |
+          echo "Pull Request detected."
+          echo "Calculated version would be: ${{ steps.version_bump.outputs.new_tag }}"
+          echo "Release body would be: ${{ steps.version_bump.outputs.release_message }}"
+
+      - name: Create new tag and push
+        if: ${{ github.event_name != 'pull_request' }}
+        run: |
+          git tag ${{ steps.version_bump.outputs.new_tag }}
+          git push origin ${{ steps.version_bump.outputs.new_tag }}
+
+      - name: Create GitHub release
+        if: ${{ github.event_name != 'pull_request' }}
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version_bump.outputs.new_tag }}
+          release_name: ${{ steps.version_bump.outputs.new_tag }}
+          body: ${{ steps.version_bump.outputs.release_message }}
