@@ -86,7 +86,9 @@ jobs:
           fi
           echo "New tag: $NEW_TAG"
           echo "new_tag=$NEW_TAG" >> $GITHUB_OUTPUT
-          echo "release_message=$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "release_message<<EOF" >> $GITHUB_OUTPUT
+          echo "$COMMIT_MSG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Display calculated version (PR only)
         if: ${{ github.event_name == 'pull_request' }}
