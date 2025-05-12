@@ -1,0 +1,8 @@
+cff-version: 1.2.0
+title: The SXS catalog of simulations
+message: >-
+  If you use this dataset, please cite it using the metadata
+  from this file.
+type: dataset
+authors:
+  - name: SXS Collaboration
